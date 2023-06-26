@@ -72,10 +72,10 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     //                     CONTRACT VARIABLES
     // =============================================================
 
-    // Pricing - hard-coded for transparency and efficiency
-    uint256 private constant _PRICE1 = 1.3 ether; // Price for tokens 1 to 3333
-    uint256 private constant _PRICE2 = 1.8 ether; // Price for tokens 3334 to 6666
-    uint256 private constant _PRICE3 = 2.3 ether; // Price for tokens 6667 to 10000
+    // Pricing - hard-coded for transparency and efficiency - NOTE: Current prices are placeholders!
+    uint256 private constant _PRICE1 = 0.5 ether; // Price for tokens 1 to 3333
+    uint256 private constant _PRICE2 = 0.8 ether; // Price for tokens 3334 to 6666
+    uint256 private constant _PRICE3 = 1.3 ether; // Price for tokens 6667 to 10000
     // Number of tokens reserved for the team
     uint256 private constant _TEAM_RESERVED = 35;
     // Instance of the token contract
