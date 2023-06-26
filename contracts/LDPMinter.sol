@@ -252,7 +252,7 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     function _processWithdraw_ama(
         uint256 newTokensSold
     ) private returns (bool creatorPaid, bool rewarderPaid) {
-        uint256 incentivesPerSale = 0.25 ether;
+        uint256 incentivesPerSale = 0.05 ether; // Note: Placeholder value. Ideally, ~10-15% of the average sale price.
         uint256 totalIncentives = incentivesPerSale * newTokensSold;
         uint256 _bal = address(this).balance;
         if (totalIncentives < _bal) {
