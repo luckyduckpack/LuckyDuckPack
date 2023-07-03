@@ -9,7 +9,8 @@ import "./lib/tools/WethUnwrapper.sol";
 /**
  * @title Lucky Duck Pack Rewarder
  * 
- * @notice This contract receives 100% of the creator fees from LDP trades.
+ * @notice This contract receives 100% of the creator fees from Lucky Duck
+ * Pack NFT trades and can be sent funds from any other source.
  * Whenever funds are received, a portion is set aside for each LDP token;
  * token owners can claim their portion at any moment by calling {cashout}.
  *
@@ -626,8 +627,8 @@ contract LDPRewarder is ReentrancyGuard {
 
     /**
      * @dev Called when rewards are claimed: returns the amount of rewards
-     * claimable by the specified token ID and records that these rewards
-     * have now been collected.
+     * claimable by the specified token ID and stores that these rewards
+     * have been collected.
      * @param tokenId Id of the LDP token
      */
     function _processWithdrawData_Il8(
