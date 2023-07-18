@@ -29,7 +29,24 @@ import "./lib/interfaces/ILDP.sol";
  *  be found in the NFT contract.
  * -The design of the mint function has been kept minimal to reduce its gas
  *  costs.
- *
+ * --------------------------------------------------------------------------
+ * SALE MECHANICS EXPLAINED:
+ * The minting process that is divided into two main phases: a fixed-price
+ * sale and a Dutch auction.
+ * -In the fixed-price sale phase, the total supply of tokens is divided into
+ * three equal parts, each with a different price. The first third of the
+ * tokens is sold at the lowest price, the second third at a median price,
+ * and the final third at the highest price.
+ * -If the fixed-price sale does not sell out within a certain timeframe,
+ * the contract automatically transitions to a Dutch auction. In this auction,
+ * the initial price is set to the median price used in the fixed-price sale.
+ * The price then decreases over time until either all tokens are sold or the
+ * auction reaches a predetermined end price.
+ * -If the first Dutch auction does not sell out, a second Dutch auction is
+ * initiated after a certain delay. The initial price for the second auction
+ * is set to the end price of the first auction. Again, the price decreases
+ * over time until all tokens are sold or the auction reaches a predetermined
+ * end price.
  * --------------------------------------------------------------------------
  * DISCLAIMER:
  * This smart contract code (the "Software") is provided "as is", without
