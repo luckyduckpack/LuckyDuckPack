@@ -253,7 +253,7 @@ contract LDPRewarder is ReentrancyGuard {
     }
 
     /**
-     * @notice Cashout the creator rewards.
+     * @notice Send the creator earnings to the creator's address.
      */
     function creatorCashout() external nonReentrant {
         _creatorCashout_89e();
@@ -426,13 +426,24 @@ contract LDPRewarder is ReentrancyGuard {
     // =============================================================
     //                     CREATOR TRANSFER
     // =============================================================
+    /**
+     * @dev The 'creator' address is the recipient of the 'creator rewards' 
+     * that are dispensed from this contract upon invocation of the
+     * {creatorCashout} function.
+     * 
+     * The 'creator' role within the smart contract does not possess
+     * special permissions, with the only exception of being able to
+     * migrate itself to a new address as detailed in the functions below.
+     */
 
     /**
-     * @notice Function that can be used by the Creator to change their
-     * address. In order to complete the change, the target address
-     * must then call {creatorTransferFulfill}.
-     * It is also possible to cancel a previous request by calling this
-     * function with address(0) as parameter.
+     * @notice This function enables the current 'creator' to propose a
+     * change of their associated address. This change will take effect
+     * when the target address triggers the {creatorTransferFulfill}
+     * function.
+     *
+     * A previous request can be cancelled by calling this function
+     * with 'address(0)' as the parameter.
      */
     function creatorTransferRequest(address newAddress) external {
         require(msg.sender == _creator, "Caller is not creator.");
@@ -440,8 +451,12 @@ contract LDPRewarder is ReentrancyGuard {
     }
 
     /**
-     * @notice Function to complete the Creator address change.
-     * Check {creatorTransferRequest} for more info.
+     * @notice This function completes the 'creator' address change
+     * process initiated by {creatorTransferRequest}.
+     *
+     * The call must be made from the address specified in the
+     * {creatorTransferRequest} function to successfully update the
+     * 'creator' address.
      */
     function creatorTransferFulfill() external {
         require(msg.sender == _creatorCandidate, "Caller is not creator candidate.");

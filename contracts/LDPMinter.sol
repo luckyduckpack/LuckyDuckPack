@@ -39,61 +39,91 @@ import "./lib/interfaces/ILDP.sol";
  * distributing the Software be liable for any damages or other liability,
  * whether in contract, tort or otherwise, arising from, out of, or in
  * connection with the Software or the use or other dealings in the Software.
- * 
+ *
  * The Software is decentralized and the admin keys have been burned following
  * deployment, meaning the creator no longer has any special privileges, nor
  * the power to fix, alter, or control its behavior.
  *
  * The creator of the Software is not a law firm and this disclaimer does not
- * constitute legal advice. The laws and regulations applicable to smart contracts
- * and blockchain technologies vary by jurisdiction. As such, you are strongly
- * advised to consult with your legal counsel before engaging in any smart
- * contract or blockchain-related activities.
+ * constitute legal advice. The laws and regulations applicable to smart
+ * contracts and blockchain technologies vary by jurisdiction. As such, you
+ * are strongly advised to consult with your legal counsel before engaging
+ * in any smart contract or blockchain-related activities.
  *
- * The creator of the Software disclaims all responsibility and liability for the
- * accuracy, applicability, or completeness of the Software. Any use or reliance
- * on the Software or any part thereof is strictly at your own risk, and you fully
- * accept and assume all risks associated with any such reliance. This includes,
- * but is not limited to, responsibility for the consequences of any errors,
- * inaccuracies, omissions, or other defects that may be present in the Software.
+ * The creator of the Software disclaims all responsibility and liability for
+ * the accuracy, applicability, or completeness of the Software. Any use or
+ * reliance on the Software or any part thereof is strictly at your own risk,
+ * and you fully accept and assume all risks associated with any such reliance.
+ * This includes, but is not limited to, responsibility for the consequences
+ * of any errors, inaccuracies, omissions, or other defects that may be
+ * present in the Software.
  *
- * You agree to indemnify and hold harmless the creator of the Software from and
- * against any and all losses, liabilities, claims, damages, costs, and expenses,
- * including legal fees and disbursements, arising out of or resulting from your
- * use of the Software.
- * 
- * By using the Software, you acknowledge that you have read and understood this
- * disclaimer, and agree to be bound by its terms.
+ * You agree to indemnify and hold harmless the creator of the Software from
+ * and against any and all losses, liabilities, claims, damages, costs, and
+ * expenses, including legal fees and disbursements, arising out of or
+ * resulting from your use of the Software.
+ *
+ * By using the Software, you acknowledge that you have read and understood
+ * this disclaimer, and agree to be bound by its terms.
  * --------------------------------------------------------------------------
  */
 contract LDPMinter is Ownable, ReentrancyGuard {
 
     // =============================================================
-    //                     CONTRACT VARIABLES
+    //                         CUSTOM TYPES
     // =============================================================
 
-    // Pricing - hard-coded for transparency and efficiency - NOTE: Current prices are placeholders!
-    uint256 private constant _PRICE1 = 0.5 ether; // Price for tokens 1 to 3333
-    uint256 private constant _PRICE2 = 0.8 ether; // Price for tokens 3334 to 6666
-    uint256 private constant _PRICE3 = 1.3 ether; // Price for tokens 6667 to 10000
+    /**
+     * @dev A struct that contains the parameters for conducting a Dutch Auction. 
+     * In a Dutch Auction, the auction starts at a high price which continuously 
+     * (or at defined intervals) drops until it reaches a specified resting price or 
+     * the auction ends.
+     */
+    struct DutchAuction {
+        uint256 startPrice; // Initial price of the Dutch Auction
+        uint256 restingPrice; // End price of the Dutch Auction
+        uint256 startTime; // Time at which the price starts decaying
+        uint256 endTime; // Time at which the resting price is reached
+        uint256 timeStep; // Price update timestep
+    }
+
+    // =============================================================
+    //                   CONSTANTS / IMMUTABLES
+    // =============================================================
+
+    // Prices during the first minting phase (standard sale)
+    uint256 private constant _SALE_PRICE1 = 0.25 ether; // Price for tokens 1 to 3333
+    uint256 private constant _SALE_PRICE2 = 0.75 ether; // Price for tokens 3334 to 6666
+    uint256 private constant _SALE_PRICE3 = 1.25 ether; // Price for tokens 6667 to 10000
+    // Resting prices for the second minting phase (Dutch auctions) - auctions kick in if the collection isn't sold out during the first phase
+    uint256 private constant _AUCTION1_RESTING_PRICE = 0.075 ether; // Resting price of the first Dutch Auction
+    uint256 private constant _AUCTION2_RESTING_PRICE = 0.025 ether; // Resting price of the second Dutch Auction
+    // Delays, durations and timestep of the Dutch auctions
+    uint256 private constant _AUCTION1_START_DELAY = 2 days;
+    uint256 private constant _AUCTION2_START_DELAY = 1 days;
+    uint256 private constant _AUCTIONS_DURATION = 1 days;
+    uint256 private constant _AUCTIONS_TIMESTEP = 30 minutes;
     // Number of tokens reserved for the team
-    uint256 private constant _TEAM_RESERVED = 35;
+    uint256 private constant _TEAM_RESERVED = 50;
     // Instance of the token contract
     ILDP public immutable NFT;
     // LDP Rewarder contract address
     address public immutable REWARDER_ADDRESS;
+
+    // =============================================================
+    //                     CONTRACT VARIABLES
+    // =============================================================
+
     // Collection creator address
     address private _creator;
-    // Total supply at last proceeds withdrawal - tracks incentives already sent
-    uint256 private _supplyAtLastWithdraw;
-    // If set to 'true' by admin, minting is enabled and cannot be disabled
-    bool public mintingStarted;
+    // The time when the minting has started
+    uint256 public mintingStartTime;
 
     // =============================================================
-    //                  CUSTOM ERRORS AND EVENTS
+    //                 CUSTOM ERRORS AND EVENTS
     // =============================================================
 
-    event MintingStarted(); // Emitted when the minting is opended
+    event MintingStarted(); // Emitted when the minting is opened
 
     error InputIsZero(); // Triggered when address(0) is used as a function parameter
     error MintingNotStarted(); // Occurs when trying to mint before mintingStarted is enabled
@@ -117,7 +147,7 @@ contract LDPMinter is Ownable, ReentrancyGuard {
         address nftContract,
         address rewarderAddress,
         address creatorAddress
-    ){
+    ) {
         NFT = ILDP(nftContract);
         REWARDER_ADDRESS = rewarderAddress;
         _creator = creatorAddress;
@@ -133,13 +163,14 @@ contract LDPMinter is Ownable, ReentrancyGuard {
      */
     function mint(uint256 amount) external payable nonReentrant {
         // Revert if minting hasn't started
-        if (!mintingStarted) revert MintingNotStarted();
+        if (mintingStartTime == 0) revert MintingNotStarted();
         // Revert if attempting to mint more than 10 tokens at once
         if (amount > 10) revert MaxMintsPerCallExceeded();
         // Revert if underpaying
+        uint256 priceTotal = _currentPrice_t6y() * amount;
         unchecked {
-            if (msg.value < _currentPrice_t6y() * amount)
-                revert Underpaid(msg.value, _currentPrice_t6y() * amount);
+            if (msg.value < priceTotal)
+                revert Underpaid(msg.value, priceTotal);
         }
         // Finally, mint the tokens
         NFT.mint_Qgo(msg.sender, amount);
@@ -153,9 +184,8 @@ contract LDPMinter is Ownable, ReentrancyGuard {
      * mint more than [_TEAM_RESERVED] free tokens.
      */
     function startMinting() external onlyOwner {
-        if (mintingStarted) revert MintingAlreadyStarted();
-        mintingStarted = true;
-        _supplyAtLastWithdraw = _TEAM_RESERVED; // These aren't paid
+        if (mintingStartTime != 0) revert MintingAlreadyStarted();
+        mintingStartTime = block.timestamp;
         NFT.mint_Qgo(msg.sender, _TEAM_RESERVED);
         emit MintingStarted();
     }
@@ -170,10 +200,20 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Get the current price.
+     * @notice Get the current price. If the minting hasn't started, returns the initial
+     * minting price.
      */
     function currentPrice() external view returns (uint256) {
+        if (mintingStartTime == 0) return _SALE_PRICE1;
         return _currentPrice_t6y();
+    }
+
+    /**
+     * @notice Checks if the minting process has been initiated.
+     * @return A boolean value indicating whether the minting process has started or not.
+     */
+    function mintingStarted() external view returns (bool) {
+        return mintingStartTime != 0;
     }
 
     // =============================================================
@@ -181,7 +221,7 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     // =============================================================
 
     /**
-     * @notice Set the creator address.
+     * @notice Set/amend the creator address.
      */
     function setCreatorAddress(address creatorAddr) external onlyOwner {
         if (creatorAddr == address(0)) revert InputIsZero();
@@ -193,15 +233,16 @@ contract LDPMinter is Ownable, ReentrancyGuard {
      * @dev Reverts if the transfers fail.
      */
     function withdrawProceeds() external {
-        if (!mintingStarted) revert MintingNotStarted();
+        // Checks
+        if (mintingStartTime == 0) revert MintingNotStarted();
         if (_msgSender() != owner())
-            require(_msgSender() == _creator, "Caller is not admin nor creator");
-        uint256 currentSupply = NFT.totalSupply();
-        uint256 newSales = currentSupply - _supplyAtLastWithdraw;
-        _supplyAtLastWithdraw = currentSupply; // Storage variable update
+            require(
+                _msgSender() == _creator,
+                "Caller is not admin nor creator"
+            );
         // Actual withdraw
-        (bool creatorPaid, bool rewarderPaid) = _processWithdraw_ama(newSales);
-        // Revert if one or both payments failed
+        (bool creatorPaid, bool rewarderPaid) = _processWithdraw_SVt();
+        // Revert if any payments failed
         if (!(creatorPaid && rewarderPaid))
             revert PaymentError(creatorPaid, rewarderPaid);
     }
@@ -218,13 +259,13 @@ contract LDPMinter is Ownable, ReentrancyGuard {
      */
     function emergencyWithdraw() external onlyOwner {
         // Revert if the function is called before the minting process ends
-        uint256 currentSupply = NFT.totalSupply();
-        require(currentSupply == NFT.MAX_SUPPLY(), "Minting still in progress");
+        require(
+            NFT.totalSupply() == NFT.MAX_SUPPLY(),
+            "Minting still in progress"
+        );
         // Attempt the normal withdraw first: if succeeds, emergency actions won't be performed
-        uint256 newSales = currentSupply - _supplyAtLastWithdraw;
-        _supplyAtLastWithdraw = currentSupply;
-        (bool creatorPaid, bool rewarderPaid) = _processWithdraw_ama(newSales);
-        // If one of the two payments failed, send the remaining balance to admin
+        (bool creatorPaid, bool rewarderPaid) = _processWithdraw_SVt();
+        // If any of the two payments failed, send the remaining balance to admin
         if (!(creatorPaid && rewarderPaid)) {
             uint256 _bal = address(this).balance;
             payable(_msgSender()).transfer(_bal);
@@ -232,34 +273,128 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     }
 
     // =============================================================
-    //                       PRIVATE FUNCTIONS
+    //                      INTERNAL LOGICS
     // =============================================================
 
     /**
-     * @dev Returns the current price (depending on the remaining supply).
+     * @dev Returns the current price.
      */
     function _currentPrice_t6y() private view returns (uint256) {
+        // Copy mint start time to a memory variable to reduce the storage operations (save gas)
+        uint256 mintingStart = mintingStartTime;
+
+        // If the first Dutch auction hasn't started, return the initial sale price
+        uint256 auction1StartTime; // Initialize auction 1 start time variable
+        unchecked {
+            auction1StartTime = mintingStart + _AUCTION1_START_DELAY; // Compute auction 1 start time
+        }
+        if (block.timestamp < auction1StartTime) return _salePrice_gn2();
+        // The code from here is executed only if the first auction has started
+        // Compute and return price for the first auction
+        uint256 auction1EndTime; // Initialize auction 1 end time variable
+        unchecked {
+            auction1EndTime = auction1StartTime + _AUCTIONS_DURATION; // Compute auction 1 end time
+        }
+        if (block.timestamp < auction1EndTime) // If auction 1 hasn't ended, return its current price
+            return
+                _dutchAuctionPrice_Ts0(
+                    DutchAuction({
+                        startPrice: _SALE_PRICE2, // Auction 1 starts at the median sale price
+                        restingPrice: _AUCTION1_RESTING_PRICE,
+                        startTime: auction1StartTime,
+                        endTime: auction1EndTime,
+                        timeStep: _AUCTIONS_TIMESTEP
+                    }),
+                    block.timestamp
+                );
+        // The code from here is executed only if the second auction has started
+        uint256 auction2StartTime;
+        uint256 auction2EndTime;
+        unchecked {
+            auction2StartTime = auction1EndTime + _AUCTION2_START_DELAY;
+            auction2EndTime = auction2StartTime + _AUCTIONS_DURATION;
+        }
+        return
+            _dutchAuctionPrice_Ts0(
+                DutchAuction({
+                    startPrice: _AUCTION1_RESTING_PRICE, // Auction 2 starts at the Auction 1 resting price
+                    restingPrice: _AUCTION2_RESTING_PRICE,
+                    startTime: auction2StartTime,
+                    endTime: auction2EndTime,
+                    timeStep: _AUCTIONS_TIMESTEP
+                }),
+                block.timestamp
+            );
+    }
+
+    /**
+     * @dev Calculates and returns the current price in a Dutch auction.
+     * The price starts at a predefined high value and decreases in discrete steps
+     * at regular intervals until the auction ends, or until the price reaches a
+     * predefined resting price (whichever happens first).
+     *
+     * @param _auctionInfo A 'DutchAuction' struct containing information about the auction
+     * @param currentTime The current timestamp to be used for price calculation
+     * @return The current price
+     */
+    function _dutchAuctionPrice_Ts0(
+        DutchAuction memory _auctionInfo,
+        uint256 currentTime
+    ) private pure returns (uint256) {
+        // If the auction has not started yet (i.e., current time is before the auction start time), return the start price
+        if (currentTime < _auctionInfo.startTime)
+            return _auctionInfo.startPrice;
+        uint256 stepsPassed;
+        uint256 priceDecrement;
+        // Unchecked block is used to ignore overflow/underflow conditions for more gas-efficient code
+        // This is safe in our case, as the first IF statement of this function ensures that the auction has started
+        // (i.e., block.timestamp is never less than startTime) by the time this part of the code is executed
+        unchecked {
+            // Calculate the number of time steps that have passed since the auction started
+            stepsPassed =
+                (currentTime - _auctionInfo.startTime) /
+                _auctionInfo.timeStep;
+            // Calculate how much the price should have decreased by now
+            priceDecrement =
+                ((_auctionInfo.startPrice - _auctionInfo.restingPrice) /
+                    ((_auctionInfo.endTime - _auctionInfo.startTime) /
+                        _auctionInfo.timeStep)) *
+                stepsPassed;
+        }
+        // If the starting price minus the decrement is greater than the resting price, return the decremented price
+        if (
+            _auctionInfo.startPrice >
+            (_auctionInfo.restingPrice + priceDecrement)
+        ) {
+            return _auctionInfo.startPrice - priceDecrement;
+            // If not, return the resting price
+        } else {
+            return _auctionInfo.restingPrice;
+        }
+    }
+
+    /**
+     * @dev Returns the current price (depending on the remaining supply) during the first minting phase (standard sale).
+     */
+    function _salePrice_gn2() private view returns (uint256) {
         uint256 curSupply = NFT.totalSupply();
-        if (curSupply < 3333) return _PRICE1;
-        else if (curSupply < 6666) return _PRICE2;
-        else return _PRICE3;
+        if (curSupply < 3333) return _SALE_PRICE1;
+        else if (curSupply < 6666) return _SALE_PRICE2;
+        else return _SALE_PRICE3;
     }
 
     /**
      * @dev Send proceeds to creator address and incentives to rewarder contract.
-     * @param newTokensSold Number of new sales
      */
-    function _processWithdraw_ama(
-        uint256 newTokensSold
-    ) private returns (bool creatorPaid, bool rewarderPaid) {
-        uint256 incentivesPerSale = 0.05 ether; // Note: Placeholder value. Ideally, ~10-15% of the average sale price.
-        uint256 totalIncentives = incentivesPerSale * newTokensSold;
-        uint256 _bal = address(this).balance;
-        if (totalIncentives < _bal) {
-            uint256 creatorProceeds = _bal - totalIncentives;
-            (rewarderPaid, ) = REWARDER_ADDRESS.call{value: totalIncentives}("");
-            (creatorPaid, ) = _creator.call{value: creatorProceeds}("");
-        }
+    function _processWithdraw_SVt()
+        private
+        returns (bool creatorPaid, bool rewarderPaid)
+    {
+        uint256 balance = address(this).balance;
+        uint256 incentives = balance / 10;
+        uint256 creatorProceeds = balance - incentives;
+        (rewarderPaid, ) = REWARDER_ADDRESS.call{value: incentives}("");
+        (creatorPaid, ) = _creator.call{value: creatorProceeds}("");
     }
 }
 
