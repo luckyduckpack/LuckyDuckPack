@@ -8,7 +8,7 @@ import "./lib/tools/WethUnwrapper.sol";
 
 /**
  * @title Lucky Duck Pack Rewarder
- * 
+ *
  * @notice This contract receives 100% of the creator fees from Lucky Duck
  * Pack NFT trades and can be sent funds from any other source.
  * Whenever funds are received, a portion is set aside for each LDP token;
@@ -42,7 +42,7 @@ import "./lib/tools/WethUnwrapper.sol";
  * distributing the Software be liable for any damages or other liability,
  * whether in contract, tort or otherwise, arising from, out of, or in
  * connection with the Software or the use or other dealings in the Software.
- * 
+ *
  * The Software is inherently unalterable after deployment. It has been designed
  * without admin keys or any other form of privileged control, which means it
  * cannot be modified, controlled, or manipulated after its deployment.
@@ -64,7 +64,7 @@ import "./lib/tools/WethUnwrapper.sol";
  * against any and all losses, liabilities, claims, damages, costs, and expenses,
  * including legal fees and disbursements, arising out of or resulting from your
  * use of the Software.
- * 
+ *
  * By using the Software, you acknowledge that you have read and understood this
  * disclaimer, and agree to be bound by its terms.
  * --------------------------------------------------------------------------
@@ -143,16 +143,35 @@ contract LDPRewarder is ReentrancyGuard {
      */
     event ProcessedErc20(address indexed tokenAddress, uint256 indexed amount);
     /**
-     * @dev Emitted when ETH is withdrawn.
+     * @dev Triggered when an account withdraws the accrued ETH from all its NFTs.
      */
-    event Cashout(address indexed account, uint256 indexed amount);
+    event AccountCashout(
+        address indexed account, // Account address
+        uint256 indexed amount // Amount withdrawn
+    );
     /**
-     * @dev Emitted when an ERC20-token is withdrawn.
+     * @dev Triggered when the accrued ETH is withdrawn from a specific NFT.
      */
-    event CashoutErc20(
-        address indexed account,
-        uint256 indexed amount,
-        address indexed token
+    event NFTCashout(
+        address indexed account, // Account address
+        uint256 indexed tokenId, // Id of the duck NFT
+        uint256 indexed amount // Amount withdrawn
+    );
+    /**
+     * @dev Emitted an account withdraws the accrued ERC20 from all its NFTs.
+     */
+    event AccountCashoutErc20(
+        address indexed account, // Account address
+        address indexed erc20address, // Address of the ERC20 token contract
+        uint256 indexed amount // Amount withdrawn
+    );
+    /**
+     * @dev Emitted when the accrued ERC20 is withdrawn from a specific NFT.
+     */
+    event NFTCashoutErc20(
+        uint256 indexed tokenId, // Id of the duck NFT
+        address indexed erc20address, // Address of the ERC20 token contract
+        uint256 indexed amount // Amount withdrawn
     );
     /**
      * @dev Raised on payout errors.
@@ -427,10 +446,10 @@ contract LDPRewarder is ReentrancyGuard {
     //                     CREATOR TRANSFER
     // =============================================================
     /**
-     * @dev The 'creator' address is the recipient of the 'creator rewards' 
+     * @dev The 'creator' address is the recipient of the 'creator rewards'
      * that are dispensed from this contract upon invocation of the
      * {creatorCashout} function.
-     * 
+     *
      * The 'creator' role within the smart contract does not possess
      * special permissions, with the only exception of being able to
      * migrate itself to a new address as detailed in the functions below.
@@ -459,7 +478,10 @@ contract LDPRewarder is ReentrancyGuard {
      * 'creator' address.
      */
     function creatorTransferFulfill() external {
-        require(msg.sender == _creatorCandidate, "Caller is not creator candidate.");
+        require(
+            msg.sender == _creatorCandidate,
+            "Caller is not creator candidate."
+        );
         _creatorCandidate = address(0);
         _creator = msg.sender;
     }
@@ -478,7 +500,7 @@ contract LDPRewarder is ReentrancyGuard {
         uint256 bal = IWETH(WETH).balanceOf(address(this));
         if (bal != 0) {
             bool success = IWETH(WETH).transfer(address(wethUnwrapper), bal);
-            if(success){
+            if (success) {
                 wethUnwrapper.unwrap_aof(bal);
                 wethUnwrapper.withdraw_wdp();
                 emit UnwrappedWeth();
@@ -503,6 +525,7 @@ contract LDPRewarder is ReentrancyGuard {
             }
         }
         _cashout_qLL({recipient: account, amount: amount});
+        emit AccountCashout({account: account, amount: amount});
     }
 
     /**
@@ -510,9 +533,7 @@ contract LDPRewarder is ReentrancyGuard {
      * @param account Account address
      * @param tokenAddress Address of the ERC20 token contract
      */
-    function _accountCashout_h8W(address account, address tokenAddress)
-        private
-    {
+    function _accountCashout_h8W(address account, address tokenAddress) private {
         uint256 amount;
         uint256 numOwned = NFT.balanceOf(account);
         for (uint256 i; i < numOwned; ) {
@@ -525,18 +546,25 @@ contract LDPRewarder is ReentrancyGuard {
             }
         }
         _cashout_KTv({token: tokenAddress, recipient: account, amount: amount});
+        emit AccountCashoutErc20({
+            account: account,
+            erc20address: tokenAddress,
+            amount: amount
+        });
     }
 
     /**
      * @dev Send all ETH rewards accrued by the token `tokenId` to its
      * current owner.
      */
-    function _nftCashout_M29(uint256 tokenId)
-        private
-        onlyTokenOwner(tokenId)
-    {
+    function _nftCashout_M29(uint256 tokenId) private onlyTokenOwner(tokenId) {
         uint256 amount = _processWithdrawData_Il8(_rewards, tokenId);
         _cashout_qLL({recipient: msg.sender, amount: amount});
+        emit NFTCashout({
+            account: msg.sender,
+            tokenId: tokenId,
+            amount: amount
+        });
     }
 
     /**
@@ -555,6 +583,11 @@ contract LDPRewarder is ReentrancyGuard {
         _cashout_KTv({
             token: tokenAddress,
             recipient: msg.sender,
+            amount: amount
+        });
+        emit NFTCashoutErc20({
+            tokenId: tokenId,
+            erc20address: tokenAddress,
             amount: amount
         });
     }
@@ -608,8 +641,7 @@ contract LDPRewarder is ReentrancyGuard {
     ) private {
         uint256 holdersCut = _calculateHolderRevenues_x8f(newRevenues);
         unchecked {
-            _erc20Rewards[tokenAddress].lifetimeAccrued += (holdersCut /
-                10000);
+            _erc20Rewards[tokenAddress].lifetimeAccrued += (holdersCut / 10000);
         }
         _processedErc20Rewards[tokenAddress] = tokenBalance;
     }
@@ -631,11 +663,7 @@ contract LDPRewarder is ReentrancyGuard {
             unchecked {
                 _newRevenues = curBalance - processedRevenues;
             }
-            _updateRevenueRecords_e20(
-                _newRevenues,
-                tokenAddress,
-                curBalance
-            );
+            _updateRevenueRecords_e20(_newRevenues, tokenAddress, curBalance);
             emit ProcessedErc20(tokenAddress, _newRevenues);
         }
     }
@@ -711,7 +739,6 @@ contract LDPRewarder is ReentrancyGuard {
     function _cashout_qLL(address recipient, uint256 amount) private {
         (bool success, ) = recipient.call{value: amount}("");
         if (!success) revert CashoutError();
-        emit Cashout(recipient, amount);
     }
 
     /**
@@ -730,7 +757,6 @@ contract LDPRewarder is ReentrancyGuard {
         }
         bool success = IERC20(token).transfer(recipient, amount);
         if (!success) revert CashoutError();
-        emit CashoutErc20(recipient, amount, token);
     }
 }
 
