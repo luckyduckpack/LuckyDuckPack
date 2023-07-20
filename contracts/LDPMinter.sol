@@ -234,6 +234,41 @@ contract LDPMinter is Ownable, ReentrancyGuard {
     }
 
     // =============================================================
+    //                 FUNCTIONS - DUTCH AUCTION
+    // =============================================================
+
+    /**
+     * @notice Check if the Dutch auction phase of the token sale is currently active.
+     * @return A boolean value indicating whether the Dutch auction phase has started or not.
+     * If the function returns true, it means the Dutch auction has started, 
+     * and the token sale price is now dynamically decreasing at each time step 
+     * until it reaches a predetermined resting price or sale ends.
+     * If the function returns false, it means the Dutch auction has not started yet.
+     */
+    function isDutchAuctionActive() external view returns (bool) {
+        uint256 mintingStart = mintingStartTime;
+        if (mintingStart == 0) return false;
+        return block.timestamp > (mintingStart + _AUCTION1_START_DELAY);
+    }
+
+    /**
+     * @notice Calculates the remaining time to the start of the next Dutch auction.
+     * If the first auction has not started yet, this function returns the time 
+     * remaining to the start of the first auction. If the first auction has started 
+     * but the second has not, it returns the time remaining to the start of the second auction.
+     * If both auctions have already started, the function returns zero.
+     * @return The time (in seconds) remaining to the start of the next Dutch auction.
+     */
+    function timeToNextAuction() external view returns (uint256) {
+        uint256 mintingStart = mintingStartTime;
+        uint256 auction1StartTime = mintingStart + _AUCTION1_START_DELAY;
+        if (block.timestamp < auction1StartTime) return auction1StartTime - block.timestamp;
+        uint256 auction2StartTime = auction1StartTime + _AUCTIONS_DURATION + _AUCTION2_START_DELAY;
+        if (block.timestamp < auction2StartTime) return auction2StartTime - block.timestamp;
+        return 0;
+    }
+
+    // =============================================================
     //                    FUNCTIONS - CASH OUT
     // =============================================================
 

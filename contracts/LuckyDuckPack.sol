@@ -81,8 +81,8 @@ contract LuckyDuckPack is
     uint256 public immutable PROVENANCE_TIMESTAMP;
     // Deployer address
     address public immutable DEPLOYER;
-    // Location where the collection information is stored
-    string private _contract_URI;
+    // Location where the collection metadata is stored
+    string private constant _CONTRACT_URI = "";
     // Where the unrevealed token data is stored
     string private _unrevealed_URI;
     // Location prefix for token metadata (and images)
@@ -197,7 +197,6 @@ contract LuckyDuckPack is
      * @param minterAddress The address of the minter contract
      * @param rewarderAddress The address of the rewarder contract, which will receive
      * royalties
-     * @param contract_URI The URI of the contract metadata
      * @param unrevealed_URI The URI to be returned for all tokens before reveal
      * @param baseURI_IPFS The base URI for the IPFS storage of token metadata
      * @param baseURI_AR The base URI for the Arweave storage of token metadata
@@ -207,7 +206,6 @@ contract LuckyDuckPack is
     function initialize(
         address minterAddress,
         address rewarderAddress,
-        string calldata contract_URI,
         string calldata unrevealed_URI,
         string calldata baseURI_IPFS,
         string calldata baseURI_AR
@@ -215,15 +213,13 @@ contract LuckyDuckPack is
         // Validate input
         if(minterAddress==address(0)) revert EmptyInput(0);
         if(rewarderAddress==address(0)) revert EmptyInput(1);
-        if(bytes(contract_URI).length==0) revert EmptyInput(2);
-        if(bytes(unrevealed_URI).length==0) revert EmptyInput(3);
-        if(bytes(baseURI_IPFS).length==0) revert EmptyInput(4);
-        if(bytes(baseURI_AR).length==0) revert EmptyInput(5);
+        if(bytes(unrevealed_URI).length==0) revert EmptyInput(2);
+        if(bytes(baseURI_IPFS).length==0) revert EmptyInput(3);
+        if(bytes(baseURI_AR).length==0) revert EmptyInput(4);
         /// Ensure the contract has enough LINK tokens for the collection reveal
         require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK for reveal");
         // Store the provided data
         minterContract = minterAddress;
-        _contract_URI = contract_URI;
         _unrevealed_URI = unrevealed_URI;
         _baseURI_IPFS = baseURI_IPFS;
         _baseURI_AR = baseURI_AR;
@@ -336,8 +332,8 @@ contract LuckyDuckPack is
      * @notice Retrieves the URI containing the contract's metadata.
      * @return The contract metadata URI as a string.
      */
-    function contractURI() public view returns (string memory) {
-        return _contract_URI;
+    function contractURI() public pure returns (string memory) {
+        return _CONTRACT_URI;
     }
 
     /**
