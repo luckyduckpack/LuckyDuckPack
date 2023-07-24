@@ -147,7 +147,7 @@ contract LDPLuckyDraw is
         uint32 numWinners
     ) external onlyOwner {
         // Check if a draw request has already been made with the given data hash
-        if (_drawRequestId[dataHash].length != 0) revert AlreadyRequested(dataHash);
+        if (_drawRequestId[dataHash] != bytes32(0)) revert AlreadyRequested(dataHash);
         // Store the data hash
         _drawsDataHashes.push(dataHash);
         // Request randomness from the Chainlink VRF
