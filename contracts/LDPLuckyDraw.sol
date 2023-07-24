@@ -213,6 +213,7 @@ contract LDPLuckyDraw is
      * @return requestTimestamp The time when the draw request was made
      * @return chainlinkRequestId The unique ID provided by Chainlink for
      * the random number request
+     * @return numParticipants The number of participants
      * @return winners The array of winner IDs if the draw has been
      * fulfilled, otherwise empty
      */
@@ -221,6 +222,7 @@ contract LDPLuckyDraw is
             bytes32 dataHash,
             uint64 requestTimestamp,
             bytes32 chainlinkRequestId,
+            uint32 numParticipants,
             uint256[] memory winners
         )
     {
@@ -234,14 +236,15 @@ contract LDPLuckyDraw is
         chainlinkRequestId = _drawRequestId[dataHash];
         // Retrieve the draw information associated with the Chainlink request ID
         DrawInfo memory drawInfo = _drawInfo[chainlinkRequestId];
-        // Extract the timestamp when the draw request was made
+        // Extract the timestamp when the draw request was made and the number of participants
         requestTimestamp = drawInfo.requestTimestamp;
+        numParticipants = drawInfo.numParticipants;
         // If the draw has been fulfilled (i.e., the random number has been returned
         // by Chainlink), calculate and return the winners
         if (_fulfilled[chainlinkRequestId]) {
             winners = _getWinnersFromRandomness(
                 drawInfo.randomness,
-                drawInfo.numParticipants,
+                numParticipants,
                 drawInfo.numWinners
             );
         }
