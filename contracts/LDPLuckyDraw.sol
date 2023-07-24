@@ -276,6 +276,7 @@ contract LDPLuckyDraw is
         uint256 numParticipants,
         uint256 numWinners
     ) private pure returns (uint256[] memory winnerIds) {
+        winnerIds = new uint256[](numWinners);
         for (uint256 i; i < numWinners; ) {
             winnerIds[i] =
                 uint256(keccak256(abi.encode(randomness, i))) %
